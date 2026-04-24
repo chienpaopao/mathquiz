@@ -641,10 +641,13 @@ async function analyze() {
 type 只能是：arithmetic / algebra / geometry / calculus / stats / other`;
 
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(geminiUrl, {
+    // 透過 Vercel 中繼呼叫 Gemini（解決 CORS 問題）
+    const res = await fetch('/api/gemini', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey
+      },
       body: JSON.stringify({
         contents: [{
           parts: [
@@ -663,7 +666,17 @@ type 只能是：arithmetic / algebra / geometry / calculus / stats / other`;
       const err = await res.json().catch(() => ({}));
       const msg = err?.error?.message || `HTTP ${res.status}`;
       if (res.status === 400) showErr('API 金鑰無效，請確認 Gemini Key 正確（應以 AIza 開頭）。');
-      else if (res.status === 429) showErr('請求太頻繁，請稍等幾秒再試。');
+      else if (res.status === 429) {
+        const detail = err?.error?.message || '未知原因';
+        const status = err?.error?.status || '';
+        if (status === 'RESOURCE_EXHAUSTED') {
+          showErr('❌ Gemini API 配額已用盡。<br>請前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#1a6fa8">Google AI Studio</a> 確認免費配額是否用完，或升級為付費版。<br><small>' + detail + '</small>');
+        } else {
+          showErr('❌ 429 錯誤：' + detail + '<br><small>status: ' + status + '</small>');
+        }
+        document.getElementById('analyzeBtn').disabled = false;
+        return;
+      }
       else showErr('API 錯誤：' + msg);
       document.getElementById('analyzeBtn').disabled = false;
       return;
