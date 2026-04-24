@@ -98,7 +98,7 @@ header {
 }
 
 .api-panel::before {
-  content: '🔑 API 金鑰設定';
+  content: '🔑 Gemini API 金鑰設定（免費）';
   font-family: 'Fira Code', monospace;
   font-size: 0.68rem;
   letter-spacing: 0.18em;
@@ -434,12 +434,12 @@ header {
   <div class="api-panel" id="apiPanel">
     <div class="api-row">
       <input class="api-input" id="apiKeyInput" type="password"
-        placeholder="sk-ant-api03-xxxxxxxx..." autocomplete="off">
+        placeholder="AIzaSy..." autocomplete="off">
       <button class="btn-save" onclick="saveKey()">儲存金鑰</button>
     </div>
     <div class="api-hint">
       API 金鑰儲存在你自己的瀏覽器，不會上傳。
-      取得金鑰請前往 <a href="https://console.anthropic.com/keys" target="_blank">console.anthropic.com/keys</a>
+      免費取得金鑰請前往 <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>　｜　完全免費，無需信用卡
     </div>
     <div class="api-status" id="apiStatus"></div>
   </div>
@@ -510,7 +510,7 @@ const BADGES = {
 
 /* ── Init ───────────────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('math_quiz_api_key');
+  const saved = localStorage.getItem('math_quiz_gemini_key');
   if (saved) {
     apiKey = saved;
     const inp = document.getElementById('apiKeyInput');
@@ -525,13 +525,13 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── API Key ────────────────────────────────────────────────────────── */
 function saveKey() {
   const val = document.getElementById('apiKeyInput').value.trim();
-  if (!val.startsWith('sk-')) {
-    document.getElementById('apiStatus').textContent = '⚠ 格式錯誤，應以 sk- 開頭';
+  if (!val.startsWith('AIza')) {
+    document.getElementById('apiStatus').textContent = '⚠ 格式錯誤，Gemini Key 應以 AIza 開頭';
     document.getElementById('apiStatus').className = 'api-status err';
     return;
   }
   apiKey = val;
-  localStorage.setItem('math_quiz_api_key', val);
+  localStorage.setItem('math_quiz_gemini_key', val);
   document.getElementById('apiKeyInput').classList.add('saved');
   document.getElementById('apiStatus').textContent = '✓ 已儲存到此瀏覽器';
   document.getElementById('apiStatus').className = 'api-status ok';
@@ -633,24 +633,18 @@ async function analyze() {
 type 只能是：arithmetic / algebra / geometry / calculus / stats / other`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(geminiUrl, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-opus-4-5-20251101',
-        max_tokens: 4000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type:'image', source:{ type:'base64', media_type: imgType, data: imgBase64 } },
-            { type:'text', text: prompt }
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: imgType, data: imgBase64 } },
+            { text: prompt }
           ]
-        }]
+        }],
+        generationConfig: { maxOutputTokens: 4000, temperature: 0.3 }
       })
     });
 
@@ -660,7 +654,7 @@ type 只能是：arithmetic / algebra / geometry / calculus / stats / other`;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const msg = err?.error?.message || `HTTP ${res.status}`;
-      if (res.status === 401) showErr('API 金鑰無效，請重新輸入正確的 sk-ant-... 金鑰。');
+      if (res.status === 400) showErr('API 金鑰無效，請確認 Gemini Key 正確（應以 AIza 開頭）。');
       else if (res.status === 429) showErr('請求太頻繁，請稍等幾秒再試。');
       else showErr('API 錯誤：' + msg);
       document.getElementById('analyzeBtn').disabled = false;
@@ -668,7 +662,7 @@ type 只能是：arithmetic / algebra / geometry / calculus / stats / other`;
     }
 
     const data = await res.json();
-    const raw = (data.content || []).map(b => b.text || '').join('');
+    const raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('未偵測到數學題目，請上傳清晰的數學題目圖片。');
 
